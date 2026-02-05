@@ -96,29 +96,43 @@ function update() {
   invBullets.forEach(b => b.y += b.vy);
   invBullets = invBullets.filter(b => b.y < H + 20);
 
-  // 侵略者の移動（左右→端で下へ）
-  const aliveCells = inv.alive.filter(v => !v.dead);
-  if (aliveCells.length === 0) {
-    // 次のウェーブ
-    inv.vx *= 1.08;
-    invBaseX = inv.offsetX;
-    invBaseY = inv.offsetY;
-    resetInvaders();
-  } else {
-    let minX = Infinity, maxX = -Infinity;
-    for (const cell of aliveCells) {
-      const p = invaderPos(cell, invBaseX, invBaseY);
-      minX = Math.min(minX, p.x);
-      maxX = Math.max(maxX, p.x + p.w);
-    }
-
-    invBaseX += inv.vx * inv.dir;
-
-    if (minX <= 8 || maxX >= W - 8) {
-      inv.dir *= -1;
-      invBaseY += inv.stepDown;
-    }
+ // 侵略者の移動（左右→端で下へ）
+const aliveCells = inv.alive.filter(v => !v.dead);
+if (aliveCells.length === 0) {
+  // 次のウェーブ
+  inv.vx *= 1.02; // ←速くなりすぎ防止（お好みで）
+  invBaseX = inv.offsetX;
+  invBaseY = inv.offsetY;
+  resetInvaders();
+} else {
+  // 現在の群れの左右端を計算
+  let minX = Infinity, maxX = -Infinity;
+  for (const cell of aliveCells) {
+    const p = invaderPos(cell, invBaseX, invBaseY);
+    minX = Math.min(minX, p.x);
+    maxX = Math.max(maxX, p.x + p.w);
   }
+
+  // まず横移動してみる
+  const nextX = invBaseX + inv.vx * inv.dir;
+
+  // nextXにした場合の左右端を計算（←ここが大事）
+  let nextMinX = Infinity, nextMaxX = -Infinity;
+  for (const cell of aliveCells) {
+    const p = invaderPos(cell, nextX, invBaseY);
+    nextMinX = Math.min(nextMinX, p.x);
+    nextMaxX = Math.max(nextMaxX, p.x + p.w);
+  }
+
+  // はみ出すなら：反転＋1回だけ降下（横移動はしない）
+  if (nextMinX <= 8 || nextMaxX >= W - 8) {
+    inv.dir *= -1;
+    invBaseY += inv.stepDown; // ←この「1回だけ」が保証される
+  } else {
+    // はみ出さないなら：普通に横移動
+    invBaseX = nextX;
+  }
+}
 
   // 侵略者の射撃
   shootInvader();
