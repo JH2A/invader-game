@@ -15,10 +15,14 @@ const player = { x: W / 2 - 18, y: H - 40, w: 36, h: 16, speed: 5, cooldown: 0 }
 let bullets = [];
 let invBullets = [];
 
-let score = 0;
+// ====== 変更点：スコアをCO2削減量(kg)に ======
+let co2Kg = 0;       // スコア＝CO2削減量(kg)
 let lives = 3;
 let gameOver = false;
+let cleared = false; // クリアしたか
+let gameOverReason = ""; // "warming" | "clear" | "lives"
 
+// ====== 侵略者設定 ======
 const inv = {
   rows: 4,
   cols: 9,
@@ -28,9 +32,9 @@ const inv = {
   gapY: 12,
   offsetX: 40,
   offsetY: 70,
-  vx: 0.5,
+  vx: 0.5,      // 横移動スピード
   dir: 1,
-  stepDown: 8,
+  stepDown: 8,  // 端で降りる量
   alive: [],
 };
 
@@ -67,7 +71,6 @@ function shootPlayer() {
 }
 
 function shootInvader() {
-  // 生存している侵略者からランダムに発射
   const alive = inv.alive.filter(v => !v.dead);
   if (alive.length === 0) return;
 
@@ -76,6 +79,11 @@ function shootInvader() {
     const p = invaderPos(pick, invBaseX, invBaseY);
     invBullets.push({ x: p.x + p.w / 2 - 2, y: p.y + p.h + 2, w: 4, h: 10, vy: 4.5 });
   }
+}
+
+function endGame(reason) {
+  gameOver = true;
+  gameOverReason = reason;
 }
 
 function update() {
@@ -96,15 +104,16 @@ function update() {
   invBullets.forEach(b => b.y += b.vy);
   invBullets = invBullets.filter(b => b.y < H + 20);
 
-// 侵略者の移動（左右→端で下へ）
-const aliveCells = inv.alive.filter(v => !v.dead);
-if (aliveCells.length === 0) {
-  inv.vx *= 1.02; // 速くなりすぎ防止（好みで）
-  invBaseX = inv.offsetX;
-  invBaseY = inv.offsetY;
-  resetInvaders();
-} else {
-  // 次のXに動かしたときの左右端を計算
+  // ====== 侵略者の移動（はみ出し補正＋降下は1回だけ） ======
+  const aliveCells = inv.alive.filter(v => !v.dead);
+
+  // 全滅＝クリア（次ウェーブにせず終了）
+  if (aliveCells.length === 0) {
+    cleared = true;
+    endGame("clear");
+    return;
+  }
+
   const nextX = invBaseX + inv.vx * inv.dir;
 
   let nextMinX = Infinity, nextMaxX = -Infinity;
@@ -117,22 +126,18 @@ if (aliveCells.length === 0) {
   const leftWall = 8;
   const rightWall = W - 8;
 
-  // 壁にはみ出す量（+なら右にはみ出し、-なら左にはみ出し）
+  // はみ出し補正（必ず画面内へ戻す）
   let correction = 0;
-  if (nextMinX < leftWall) correction = leftWall - nextMinX;              // 右へ押す
-  if (nextMaxX > rightWall) correction = rightWall - nextMaxX;            // 左へ押す（負の値）
+  if (nextMinX < leftWall) correction = leftWall - nextMinX;
+  if (nextMaxX > rightWall) correction = rightWall - nextMaxX;
 
   if (correction !== 0) {
-    // 1) まず「必ず画面内に押し戻す」
-    invBaseX = nextX + correction;
-    // 2) そのうえで「反転して」「1回だけ下へ」
-    inv.dir *= -1;
-    invBaseY += inv.stepDown;
+    invBaseX = nextX + correction; // 押し戻す
+    inv.dir *= -1;                // 反転
+    invBaseY += inv.stepDown;     // 1回だけ降下
   } else {
-    // 普通に横移動
     invBaseX = nextX;
   }
-}
 
   // 侵略者の射撃
   shootInvader();
@@ -145,7 +150,10 @@ if (aliveCells.length === 0) {
       if (rectsOverlap(b, p)) {
         cell.dead = true;
         b.hit = true;
-        score += 10;
+
+        // ====== 変更点：倒したらCO2削減量(kg)を増やす ======
+        co2Kg += 50; // 1体=50kg（好きに変えてOK）
+
         break;
       }
     }
@@ -157,16 +165,19 @@ if (aliveCells.length === 0) {
     if (rectsOverlap(b, player)) {
       b.hit = true;
       lives--;
-      if (lives <= 0) gameOver = true;
+      if (lives <= 0) endGame("lives");
     }
   }
   invBullets = invBullets.filter(b => !b.hit);
 
-  // 侵略者が下まで来たら負け
+  // 侵略者が下まで来たら負け（温暖化）
   for (const cell of inv.alive) {
     if (cell.dead) continue;
     const p = invaderPos(cell, invBaseX, invBaseY);
-    if (p.y + p.h >= player.y) gameOver = true;
+    if (p.y + p.h >= player.y) {
+      endGame("warming");
+      break;
+    }
   }
 }
 
@@ -177,13 +188,13 @@ function draw() {
   // UI
   ctx.fillStyle = "#e6edf3";
   ctx.font = "14px system-ui";
-  ctx.fillText(`SCORE: ${score}`, 12, 20);
+  ctx.fillText(`CO₂削減: ${co2Kg} kg`, 12, 20);
   ctx.fillText(`LIVES: ${lives}`, W - 90, 20);
 
   // プレイヤー
   ctx.fillStyle = "#6ee7ff";
   ctx.fillRect(player.x, player.y, player.w, player.h);
-  ctx.fillRect(player.x + 10, player.y - 6, player.w - 20, 6); // 砲身
+  ctx.fillRect(player.x + 10, player.y - 6, player.w - 20, 6);
 
   // 自弾
   ctx.fillStyle = "#fbbf24";
@@ -193,26 +204,51 @@ function draw() {
   ctx.fillStyle = "#fb7185";
   invBullets.forEach(b => ctx.fillRect(b.x, b.y, b.w, b.h));
 
-  // 侵略者
+  // 侵略者（見た目はそのまま）
   ctx.fillStyle = "#a7f3d0";
   inv.alive.forEach(cell => {
     if (cell.dead) return;
     const p = invaderPos(cell, invBaseX, invBaseY);
     ctx.fillRect(p.x, p.y, p.w, p.h);
-    // 目っぽいドット
     ctx.clearRect(p.x + 6, p.y + 5, 4, 4);
     ctx.clearRect(p.x + p.w - 10, p.y + 5, 4, 4);
   });
 
-  // ゲームオーバー
+  // 終了表示（温暖化 / クリア / ライフ切れ）
   if (gameOver) {
     ctx.fillStyle = "rgba(0,0,0,0.6)";
     ctx.fillRect(0, 0, W, H);
+
     ctx.fillStyle = "#fff";
-    ctx.font = "28px system-ui";
-    ctx.fillText("GAME OVER", 140, 320);
-    ctx.font = "14px system-ui";
-    ctx.fillText("リロードで再開", 190, 350);
+
+    if (gameOverReason === "clear") {
+      ctx.font = "22px system-ui";
+      ctx.fillText("おめでとう！", 170, 285);
+
+      ctx.font = "14px system-ui";
+      ctx.fillText("景品応募キーワードは", 155, 320);
+
+      ctx.font = "20px system-ui";
+      ctx.fillText("“サクラサク”", 165, 350);
+
+      ctx.font = "14px system-ui";
+      ctx.fillText(`CO₂削減: ${co2Kg} kg`, 170, 385);
+      ctx.fillText("リロードで再挑戦", 175, 415);
+    } else if (gameOverReason === "warming") {
+      ctx.font = "22px system-ui";
+      ctx.fillText("地球温暖化 GAME OVER", 110, 320);
+
+      ctx.font = "14px system-ui";
+      ctx.fillText(`CO₂削減: ${co2Kg} kg`, 180, 350);
+      ctx.fillText("リロードで再挑戦", 175, 380);
+    } else {
+      ctx.font = "22px system-ui";
+      ctx.fillText("GAME OVER", 160, 320);
+
+      ctx.font = "14px system-ui";
+      ctx.fillText(`CO₂削減: ${co2Kg} kg`, 180, 350);
+      ctx.fillText("リロードで再挑戦", 175, 380);
+    }
   }
 }
 
