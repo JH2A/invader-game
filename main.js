@@ -28,9 +28,9 @@ const inv = {
   gapY: 12,
   offsetX: 40,
   offsetY: 70,
-  vx: 1.2,
+  vx: 0.5,
   dir: 1,
-  stepDown: 18,
+  stepDown: 8,
   alive: [],
 };
 
