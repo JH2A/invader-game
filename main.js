@@ -96,27 +96,17 @@ function update() {
   invBullets.forEach(b => b.y += b.vy);
   invBullets = invBullets.filter(b => b.y < H + 20);
 
- // 侵略者の移動（左右→端で下へ）
+// 侵略者の移動（左右→端で下へ）
 const aliveCells = inv.alive.filter(v => !v.dead);
 if (aliveCells.length === 0) {
-  // 次のウェーブ
-  inv.vx *= 1.02; // ←速くなりすぎ防止（お好みで）
+  inv.vx *= 1.02; // 速くなりすぎ防止（好みで）
   invBaseX = inv.offsetX;
   invBaseY = inv.offsetY;
   resetInvaders();
 } else {
-  // 現在の群れの左右端を計算
-  let minX = Infinity, maxX = -Infinity;
-  for (const cell of aliveCells) {
-    const p = invaderPos(cell, invBaseX, invBaseY);
-    minX = Math.min(minX, p.x);
-    maxX = Math.max(maxX, p.x + p.w);
-  }
-
-  // まず横移動してみる
+  // 次のXに動かしたときの左右端を計算
   const nextX = invBaseX + inv.vx * inv.dir;
 
-  // nextXにした場合の左右端を計算（←ここが大事）
   let nextMinX = Infinity, nextMaxX = -Infinity;
   for (const cell of aliveCells) {
     const p = invaderPos(cell, nextX, invBaseY);
@@ -124,12 +114,22 @@ if (aliveCells.length === 0) {
     nextMaxX = Math.max(nextMaxX, p.x + p.w);
   }
 
-  // はみ出すなら：反転＋1回だけ降下（横移動はしない）
-  if (nextMinX <= 8 || nextMaxX >= W - 8) {
+  const leftWall = 8;
+  const rightWall = W - 8;
+
+  // 壁にはみ出す量（+なら右にはみ出し、-なら左にはみ出し）
+  let correction = 0;
+  if (nextMinX < leftWall) correction = leftWall - nextMinX;              // 右へ押す
+  if (nextMaxX > rightWall) correction = rightWall - nextMaxX;            // 左へ押す（負の値）
+
+  if (correction !== 0) {
+    // 1) まず「必ず画面内に押し戻す」
+    invBaseX = nextX + correction;
+    // 2) そのうえで「反転して」「1回だけ下へ」
     inv.dir *= -1;
-    invBaseY += inv.stepDown; // ←この「1回だけ」が保証される
+    invBaseY += inv.stepDown;
   } else {
-    // はみ出さないなら：普通に横移動
+    // 普通に横移動
     invBaseX = nextX;
   }
 }
